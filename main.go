@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	"cube/manager"
@@ -9,9 +10,63 @@ import (
 	"cube/task"
 	"cube/worker"
 
+	"github.com/docker/docker/client"
 	"github.com/golang-collections/collections/queue"
 	"github.com/google/uuid"
 )
+
+func createContainer() (*task.Docker, *task.DockerResult) {
+	c := &task.Config{
+		Name:  "test-container-1",
+		Image: "postgres:13",
+		Env: []string{
+			"POSTGRES_USER=cube",
+			"POSTGRES_PASSWORD=secret",
+		},
+	}
+
+	dc, err := client.NewClientWithOpts(client.FromEnv)
+	if err != nil {
+		fmt.Printf("Error creating Docker client: %v\n", err)
+		return nil, nil
+	}
+
+	d := &task.Docker{
+		Client: dc,
+		Config: c,
+	}
+
+	result := d.Run()
+
+	if result.Error != nil {
+		fmt.Printf("%v\n", result.Error)
+		return nil, nil
+	}
+
+	fmt.Printf(
+		"Container %s is running with config %v\n",
+		result.ContainerId,
+		c,
+	)
+
+	return d, &result
+}
+
+func stopContainer(d *task.Docker, id string) *task.DockerResult {
+	result := d.Stop(id)
+
+	if result.Error != nil {
+		fmt.Printf("%v\n", result.Error)
+		return nil
+	}
+
+	fmt.Printf(
+		"Container %s has been stopped and removed\n",
+		id,
+	)
+
+	return &result
+}
 
 func main() {
 	t := task.Task{
@@ -27,7 +82,7 @@ func main() {
 		ID:        uuid.New(),
 		State:     task.Pending,
 		Timestamp: time.Now(),
-		Task:      t,
+		Task:      &t,
 	}
 
 	fmt.Printf("task: %v\n", t)
@@ -47,10 +102,10 @@ func main() {
 	w.StopTask()
 
 	m := manager.Manager{
-		Pending: queue.New(),
-		TaskDb:  make(map[string][]*task.Task),
-		EventDb: make(map[string][]*task.TaskEvent),
-		Workers: []string{w.Name},
+		Pending:  queue.New(),
+		TaskDb:   make(map[string][]*task.Task),
+		EventDb:  make(map[string][]*task.TaskEvent),
+		Workers:  []string{w.Name},
 	}
 
 	fmt.Printf("manager: %v\n", m)
@@ -69,4 +124,28 @@ func main() {
 	}
 
 	fmt.Printf("node: %v\n", n)
+
+	fmt.Printf("create a test container\n")
+
+	dockerTask, createResult := createContainer()
+
+	if createResult == nil || createResult.Error != nil {
+		if createResult != nil {
+			fmt.Printf("%v\n", createResult.Error)
+		}
+
+		os.Exit(1)
+	}
+
+	time.Sleep(5 * time.Second)
+
+	fmt.Printf(
+		"stopping container %s\n",
+		createResult.ContainerId,
+	)
+
+	_ = stopContainer(
+		dockerTask,
+		createResult.ContainerId,
+	)
 }
