@@ -28,6 +28,7 @@ const (
 
 type Task struct {
 	ID            uuid.UUID
+	ContainerID   string
 	Name          string
 	State         State
 	Image         string
@@ -72,6 +73,29 @@ type DockerResult struct {
 	Action      string
 	ContainerId string
 	Result      string
+}
+
+func NewDocker(c *Config) (*Docker, error) {
+	dc, err := client.NewClientWithOpts(client.FromEnv)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Docker{
+		Client: dc,
+		Config: c,
+	}, nil
+}
+
+func NewConfig(t *Task) *Config {
+	return &Config{
+		Name:          t.Name,
+		Image:         t.Image,
+		Memory:        int64(t.Memory),
+		Disk:          int64(t.Disk),
+		ExposedPorts:  t.ExposedPorts,
+		RestartPolicy: t.RestartPolicy,
+	}
 }
 
 func (d *Docker) Run() DockerResult {

@@ -2,11 +2,8 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"time"
 
-	"cube/manager"
-	"cube/node"
 	"cube/task"
 	"cube/worker"
 
@@ -69,83 +66,40 @@ func stopContainer(d *task.Docker, id string) *task.DockerResult {
 }
 
 func main() {
-	t := task.Task{
-		ID:     uuid.New(),
-		Name:   "Task-1",
-		State:  task.Pending,
-		Image:  "Image-1",
-		Memory: 1024,
-		Disk:   1,
-	}
-
-	te := task.TaskEvent{
-		ID:        uuid.New(),
-		State:     task.Pending,
-		Timestamp: time.Now(),
-		Task:      &t,
-	}
-
-	fmt.Printf("task: %v\n", t)
-	fmt.Printf("task event: %v\n", te)
-
+	db :=  make(map[uuid.UUID]*task.Task)
 	w := worker.Worker{
 		Name:  "worker-1",
 		Queue: queue.New(),
-		Db:    make(map[uuid.UUID]*task.Task),
+		Db: db,
 	}
 
-	fmt.Printf("worker: %v\n", w)
-
-	w.CollectStats()
-	w.RunTask()
-	w.StartTask()
-	w.StopTask()
-
-	m := manager.Manager{
-		Pending:  queue.New(),
-		TaskDb:   make(map[string][]*task.Task),
-		EventDb:  make(map[string][]*task.TaskEvent),
-		Workers:  []string{w.Name},
+	t := task.Task{
+		ID:     uuid.New(),
+		Name:   "test-container-1",
+		State:  task.Scheduled,
+		Image:  "strm/helloworld-http",
 	}
 
-	fmt.Printf("manager: %v\n", m)
+	fmt.Println("starting task")
+    w.AddTask(&t)
 
-	m.SelectWorker()
-	m.UpdateTasks()
-	m.SendWork()
-
-	n := node.Node{
-		Name:   "Node-1",
-		Ip:     "192.168.1.1",
-		Cores:  4,
-		Memory: 1024,
-		Disk:   25,
-		Role:   "worker",
+	result := w.RunTask()
+    if result.Error != nil {
+		panic(result.Error)
 	}
 
-	fmt.Printf("node: %v\n", n)
+	t.ContainerID = result.ContainerId
+	fmt.Printf("task %s is running in container %s\n", t.ID, t.ContainerID)
+	fmt.Println("Sleepy time")
+	time.Sleep(time.Second * 30)
 
-	fmt.Printf("create a test container\n")
+	fmt.Printf("stopping task %s\n", t.ID)
+	stopTask := t
+	stopTask.State = task.Completed
 
-	dockerTask, createResult := createContainer()
-
-	if createResult == nil || createResult.Error != nil {
-		if createResult != nil {
-			fmt.Printf("%v\n", createResult.Error)
-		}
-
-		os.Exit(1)
+	w.AddTask(&stopTask)
+	result = w.RunTask()
+	if result.Error != nil {
+		panic(result.Error)
 	}
-
-	time.Sleep(5 * time.Second)
-
-	fmt.Printf(
-		"stopping container %s\n",
-		createResult.ContainerId,
-	)
-
-	_ = stopContainer(
-		dockerTask,
-		createResult.ContainerId,
-	)
 }
