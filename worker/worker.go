@@ -17,6 +17,7 @@ type Worker struct {
 	Queue     *queue.Queue
 	Db        map[uuid.UUID]*task.Task
 	TaskCount int
+	Stats     *Stats
 }
 
 var stateTransitionMap = map[task.State][]task.State{
@@ -53,10 +54,6 @@ func Contains(states []task.State, state task.State) bool {
 
 func ValidStateTransition(src task.State, dst task.State) bool {
 	return Contains(stateTransitionMap[src], dst)
-}
-
-func (w *Worker) CollectStats() {
-	fmt.Println("I will collect stats")
 }
 
 func (w *Worker) AddTask(t *task.Task) {
@@ -220,4 +217,20 @@ func (w *Worker) StopTask(t *task.Task) task.DockerResult {
 	)
 
 	return result
+}
+
+func (w *Worker) CollectStats() {
+    for {
+        log.Println("Collecting stats")
+
+        stats, err := GetStats()
+        if err != nil {
+            log.Printf("Error collecting stats: %v", err)
+        } else {
+            stats.TaskCount = w.TaskCount
+            w.Stats = stats
+        }
+
+        time.Sleep(15 * time.Second)
+    }
 }
